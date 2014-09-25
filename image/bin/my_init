@@ -11,6 +11,8 @@ LOG_LEVEL_DEBUG = 3
 
 log_level = None
 
+terminated_child_processes = {}
+
 class AlarmException(Exception):
 	pass
 
@@ -20,15 +22,15 @@ def error(message):
 
 def warn(message):
 	if log_level >= LOG_LEVEL_WARN:
-		print("*** %s" % message)
+		sys.stderr.write("*** %s\n" % message)
 
 def info(message):
 	if log_level >= LOG_LEVEL_INFO:
-		print("*** %s" % message)
+		sys.stderr.write("*** %s\n" % message)
 
 def debug(message):
 	if log_level >= LOG_LEVEL_DEBUG:
-		print("*** %s" % message)
+		sys.stderr.write("*** %s\n" % message)
 
 def ignore_signals_and_raise_keyboard_interrupt(signame):
 	signal.signal(signal.SIGTERM, signal.SIG_IGN)
@@ -54,6 +56,9 @@ def is_exe(path):
 	except OSError:
 		return False
 
+def create_hosts_file():
+	run_command_killable("/bin/cp", "/etc/hosts", "/etc/workaround-docker-2267/")
+
 def import_envvars(clear_existing_environment = True, override_existing_environment = True):
 	new_env = {}
 	for envfile in listdir("/etc/container_environment"):
@@ -73,6 +78,8 @@ def import_envvars(clear_existing_environment = True, override_existing_environm
 def export_envvars(to_dir = True):
 	shell_dump = ""
 	for name, value in os.environ.items():
+		if name in ['HOME', 'USER', 'GROUP', 'UID', 'GID', 'SHELL']:
+			continue
 		if to_dir:
 			with open("/etc/container_environment/" + name, "w") as f:
 				f.write(value)
@@ -95,19 +102,36 @@ def shquote(s):
 	# the string $'b is then quoted as '$'"'"'b'
 	return "'" + s.replace("'", "'\"'\"'") + "'"
 
+# Waits for the child process with the given PID, while at the same time
+# reaping any other child processes that have exited (e.g. adopted child
+# processes that have terminated).
 def waitpid_reap_other_children(pid):
+	global terminated_child_processes
+
+	status = terminated_child_processes.get(pid)
+	if status:
+		# A previous call to waitpid_reap_other_children(),
+		# with an argument not equal to the current argument,
+		# already waited for this process. Return the status
+		# that was obtained back then.
+		del terminated_child_processes[pid]
+		return status
+
 	done = False
 	status = None
-	try:
-		this_pid, status = os.waitpid(pid, os.WNOHANG)
-	except OSError as e:
-		if e.errno == errno.ECHILD or e.errno == errno.ESRCH:
-			return None
-		else:
-			raise
 	while not done:
-		this_pid, status = os.waitpid(-1, 0)
-		done = this_pid == pid
+		try:
+			this_pid, status = os.waitpid(-1, 0)
+			if this_pid == pid:
+				done = True
+			else:
+				# Save status for later.
+				terminated_child_processes[this_pid] = status
+		except OSError as e:
+			if e.errno == errno.ECHILD or e.errno == errno.ESRCH:
+				return None
+			else:
+				raise
 	return status
 
 def stop_child_process(name, pid, signo = signal.SIGTERM, time_limit = KILL_PROCESS_TIMEOUT):
@@ -200,7 +224,7 @@ def run_startup_files():
 def start_runit():
 	info("Booting runit daemon...")
 	pid = os.spawnl(os.P_NOWAIT, "/usr/bin/runsvdir", "/usr/bin/runsvdir",
-		"-P", "/etc/service", "log: %s" % ('.' * 395))
+		"-P", "/etc/service")
 	info("Runit started as PID %d" % pid)
 	return pid
 
@@ -228,6 +252,7 @@ def install_insecure_key():
 	run_command_killable("/usr/sbin/enable_insecure_key")
 
 def main(args):
+	create_hosts_file()
 	import_envvars(False, False)
 	export_envvars()
 
@@ -266,6 +291,7 @@ def main(args):
 					info("%s exited with status %d." % (args.main_command[0], exit_status))
 			except KeyboardInterrupt:
 				stop_child_process(args.main_command[0], pid)
+				raise
 			except BaseException as s:
 				warn("An error occurred. Aborting.")
 				stop_child_process(args.main_command[0], pid)

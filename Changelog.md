@@ -1,6 +1,28 @@
-## 0.9.11 (not yet released)
+## 0.9.13 (release date: 2014-08-22)
 
+ * Fixed `my_init` not properly exiting with a non-zero exit status when Ctrl-C is pressed.
+ * The GID of the `docker_env` group has been changed from 1000 to 8377, in order to avoid GID conflicts with any groups that you might want to introduce inside the container.
+ * The syslog-ng socket is now deleted before starting the syslog-ng daemon, to avoid the daemon from failing to start due to garbage on the filesystem. Thanks to Kingdon Barrett. Closes GH-129.
+ * Typo fixes by Arkadi Shishlov.
+
+## 0.9.12 (release date: 2014-07-24)
+
+ * We now officially support `nsenter` as an alternative way to login to the container. With official support, we mean that we've provided extensive documentation on how to use `nsenter`, as well as related convenience tools. However, because `nsenter` has various issues, and for backward compatibility reasons, we still support SSH. Please refer to the README for details about `nsenter`, and what the pros and cons are compared to SSH.
+   * The `docker-bash` tool has been modified to use `nsenter` instead of SSH.
+   * What was previously the `docker-bash` tool, has now been renamed to `docker-ssh`. It now also works on a regular sh shell too, instead of bash specifically.
+ * Added a workaround for Docker's inability to modify /etc/hosts in the container ([Docker bug 2267](https://github.com/dotcloud/docker/issues/2267)). Please refer to the README for details.
+ * Fixed an issue with SSH X11 forwarding. Thanks to Anatoly Bubenkov. Closes GH-105.
+ * The init system now prints its own log messages to stderr. Thanks to mephi42. Closes GH-106.
+
+## 0.9.11 (release date: 2014-06-24)
+
+ * Introduced the `docker-bash` tool. This is a shortcut tool for logging into a container using SSH. Usage: `docker-bash <CONTAINER ID>`. See the README for details.
+ * Fixed various process waiting issues in `my_init`. Closes GH-27, GH-82 and GH-83. Thanks to André Luiz dos Santos and Paul Annesley.
  * The `ca-certificates` package is now installed by default. This is because we include `apt-transport-https`, but Ubuntu 14.04 no longer installs `ca-certificates` by default anymore. Closes GH-73.
+ * Output print by Runit services are now redirected to the Docker logs instead of to proctitle. Thanks to Paul Annesley.
+ * Container environment variables are now made available to SSH root shells. If you login with SSH through a non-root account, then container environment variables are only made available if that user is a member of the `docker_env` group. Thanks to Bernard Potocki.
+ * `add-apt-repository` is now installed by default. Closes GH-74.
+ * Various minor fixes and contributions thanks to yebyen, John Eckhart, Christoffer Sawicki and Brant Fitzsimmons.
 
 ## 0.9.10 (release date: 2014-05-12)
 
